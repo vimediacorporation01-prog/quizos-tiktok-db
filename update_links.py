@@ -1,85 +1,79 @@
+import requests
 import json
-import subprocess
 import datetime
 
-# --- KONFIGURASI ---
-# Ganti dengan username TikTok target (pakai @)
-TIKTOK_USER = "@jkt48.official" 
-# Jumlah video yang mau diambil
-LIMIT = 5 
+# --- KONFIGURASI (GANTI INI) ---
+# Masukkan Username TikTok target (tanpa @)
+TARGET_USERNAME = "jkt48.official" 
+# -------------------------------
 
-def get_tiktok_links():
-    print(f"Sedang mengambil video dari {TIKTOK_USER}...")
+def update_via_api():
+    print(f"Sedang mengintip TikTok: {TARGET_USERNAME} lewat Jalur Belakang...")
     
-    # Perintah yt-dlp untuk mengambil data JSON tanpa download video
-    # flat-playlist: biar cepat
-    # dump-json: output data text
-    cmd = [
-        "yt-dlp",
-        f"https://www.tiktok.com/{TIKTOK_USER}",
-        "--flat-playlist",
-        "--dump-json",
-        "--playlist-end", str(LIMIT)
-    ]
+    # Kita pakai API publik dari TikWM (Middleman)
+    # Ini lebih ampuh daripada scraping langsung
+    url = f"https://www.tikwm.com/api/user/posts?unique_id={TARGET_USERNAME}&count=10"
     
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        videos = []
+        # Pura-pura jadi browser biasa
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        }
         
-        # Proses setiap baris output
-        for line in result.stdout.strip().split('\n'):
-            if line:
-                data = json.loads(line)
+        response = requests.get(url, headers=headers)
+        data = response.json()
+        
+        new_videos = []
+        
+        if data.get("code") == 0 and "data" in data and "videos" in data["data"]:
+            posts = data["data"]["videos"]
+            
+            for post in posts:
+                # Ambil data penting
+                # play: link video tanpa watermark
+                # title: caption video
+                # create_time: waktu upload
                 
-                # Kita butuh direct link video. 
-                # Karena link TikTok sering expire, kita simpan Link Asli TikToknya
-                # Nanti di HTML kita perlu cara khusus, atau kita ambil url langsung
-                # Untuk cara paling stabil di HTML5 Video Player biasa, kita butuh link MP4.
-                # Kita gunakan yt-dlp -g (get-url) nanti di client, atau disini kita ambil URL asli.
+                video_url = post.get("play")
+                title = post.get("title", "Video TikTok")
                 
-                # Untuk tutorial ini, kita simpan URL MP4 langsung (NOTE: Link ini bisa expired dalam 24 jam)
-                # Jadi script ini harus jalan sering (tiap jam).
+                # Konversi waktu
+                timestamp = post.get("create_time", 0)
+                date_str = datetime.datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d")
                 
-                # Mendapatkan direct link mp4 (membutuhkan request tambahan)
-                direct_url_cmd = ["yt-dlp", "-g", data['url']]
-                direct_res = subprocess.run(direct_url_cmd, capture_output=True, text=True)
-                mp4_url = direct_res.stdout.strip()
-                
-                video_obj = {
-                    "title": data.get('title', 'Video TikTok'),
-                    "url": mp4_url, # Ini link streaming langsung
-                    "date": datetime.datetime.now().strftime("%Y-%m-%d"),
-                    "original_link": data.get('url')
-                }
-                
-                if mp4_url: # Cuma simpan kalau sukses dapat link
-                    videos.append(video_obj)
-                    print(f"Dapat: {data.get('title')}")
-                    
-        return videos
+                if video_url:
+                    video_obj = {
+                        "title": title,
+                        "url": video_url, 
+                        "date": date_str
+                    }
+                    new_videos.append(video_obj)
+                    print(f"Dapat: {title[:30]}...")
+            
+            return new_videos
+        else:
+            print("Gagal mengambil data dari API (Mungkin user tidak ditemukan/limit).")
+            return []
 
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error parah: {e}")
         return []
 
-# --- PROSES UTAMA ---
-new_shorts = get_tiktok_links()
+# --- EKSEKUSI DAN SIMPAN ---
+videos = update_via_api()
 
-if new_shorts:
-    # Buka database lama
-    try:
-        with open('vl_data.json', 'r') as f:
-            db = json.load(f)
-    except:
-        db = {"shorts": [], "complex": []}
-
-    # Update (Timpa data lama dengan yang baru biar linknya segar terus)
-    # Karena link TikTok cepat mati, kita refresh total untuk list teratas
-    db['shorts'] = new_shorts
+if videos:
+    # Siapkan struktur database
+    db = {
+        "shorts": videos, # Timpa data lama biar selalu fresh
+        "complex": []
+    }
     
-    # Simpan kembali
+    # Simpan ke file
     with open('vl_data.json', 'w') as f:
         json.dump(db, f, indent=2)
-    print("Database berhasil diupdate!")
+    print("SUKSES! Database berhasil diperbarui.")
 else:
-    print("Tidak ada video yang ditemukan.")
+    print("ZONK! Tidak ada video yang didapat. File tidak diubah.")
+    # Kita error-kan biar kelihatan merah di GitHub Action kalau gagal
+    exit(1)
