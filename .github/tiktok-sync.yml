@@ -2,9 +2,8 @@ name: Update TikTok Links
 
 on:
   schedule:
-    # Jalan setiap 2 jam sekali (biar link video gak basi)
-    - cron: '0 */2 * * *'
-  workflow_dispatch: # Biar bisa diklik manual tombol "Run"
+    - cron: '0 */4 * * *' # Jalan tiap 4 jam (biar gak kena limit API)
+  workflow_dispatch: # Tombol manual
 
 jobs:
   scrape:
@@ -19,19 +18,16 @@ jobs:
         with:
           python-version: '3.9'
 
-      - name: Install yt-dlp (Alat Penyedot)
-        run: |
-          python -m pip install --upgrade pip
-          pip install yt-dlp
+      - name: Install Requests
+        run: pip install requests
 
-      - name: Jalankan Script Penyedot
+      - name: Jalankan Script Jalur Belakang
         run: python update_links.py
 
-      - name: Simpan Perubahan ke Repo
+      - name: Simpan Perubahan
         run: |
           git config --global user.name "QuizOS Bot"
           git config --global user.email "bot@quizos.com"
           git add vl_data.json
-          # Cuma commit kalau ada perubahan
-          git commit -m "Auto-update video links" || exit 0
+          git commit -m "Update video via API" || exit 0
           git push
